@@ -33,6 +33,16 @@ def _ensure_customer(org_id, name, org_type, currency=None):
     existing = frappe.db.get_value("Customer", {"dxp_organisation_id": org_id})
     if existing:
         return existing
+    # Adopt a same-name customer that has no DXP id yet (manual/legacy) instead of
+    # creating a duplicate; re-imports then converge on one record.
+    if name:
+        match = frappe.db.get_value("Customer", {"customer_name": name},
+                                    ["name", "dxp_organisation_id", "default_currency"], as_dict=True)
+        if match and not match.dxp_organisation_id:
+            frappe.db.set_value("Customer", match.name, "dxp_organisation_id", org_id)
+            if currency and not match.default_currency:
+                frappe.db.set_value("Customer", match.name, "default_currency", currency)
+            return match.name
     doc = frappe.get_doc({
         "doctype": "Customer",
         "customer_name": name or org_id,
