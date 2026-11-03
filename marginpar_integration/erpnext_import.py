@@ -65,6 +65,7 @@ def _ensure_item(product_id, name):
         "item_group": ITEM_GROUP,
         "stock_uom": UOM,
         "is_stock_item": 0,  # external orders; avoid stock/warehouse requirements
+        "custom_is_service_item": 1,  # this site requires an item type (stock/asset/service)
         "dxp_product_id": product_id,
     }).insert(ignore_permissions=True).name
 
