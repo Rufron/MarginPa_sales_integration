@@ -2,8 +2,10 @@
 
 Credentials come from site_config.json (frappe.conf), never from code:
   fabric_server, fabric_database, fabric_tenant_id, fabric_client_id,
-  fabric_cert_path, fabric_cert_password
+  fabric_cert_password, and the cert as either fabric_cert_base64 (preferred,
+  no file needed - use on Frappe Cloud) or fabric_cert_path (local file).
 """
+import base64
 import struct
 
 import frappe
@@ -19,11 +21,14 @@ SQL_ATTR_LOGIN_TIMEOUT = 103  # Fabric endpoints wake slowly on a cold connectio
 
 def get_connection():
     conf = frappe.conf
+    # Cert from base64 config (Frappe Cloud, no file) or a local path (dev).
+    cert = ({"certificate_data": base64.b64decode(conf.fabric_cert_base64)}
+            if conf.get("fabric_cert_base64") else {"certificate_path": conf.fabric_cert_path})
     credential = CertificateCredential(
         tenant_id=conf.fabric_tenant_id,
         client_id=conf.fabric_client_id,
-        certificate_path=conf.fabric_cert_path,
         password=conf.fabric_cert_password,
+        **cert,
     )
     # DDBC wants the token as a [length][UTF-16LE] struct, not a raw string.
     token = credential.get_token(SCOPE).token.encode("utf-16-le")
