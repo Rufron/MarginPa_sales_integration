@@ -1,0 +1,26 @@
+[
+ {
+  "doctype": "Workspace",
+  "name": "Marginpar Integrations",
+  "label": "Marginpar Integrations",
+  "title": "Marginpar Integrations",
+  "public": 1,
+  "icon": "plug",
+  "type": "Workspace",
+  "module": "Marginpar Integration",
+  "content": "[{\"id\": \"a1b2c3d4e5\", \"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"Sales Orders\", \"col\": 12}}]",
+  "custom_blocks": [
+   {
+    "doctype": "Workspace Custom Block",
+    "custom_block_name": "Sales Orders",
+    "label": "Sales Orders"
+   }
+  ],
+  "charts": [],
+  "shortcuts": [],
+  "links": [],
+  "number_cards": [],
+  "quick_lists": [],
+  "roles": []
+ }
+]

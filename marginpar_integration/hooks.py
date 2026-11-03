@@ -1,4 +1,9 @@
 app_name = "marginpar_integration"
+
+fixtures = [
+    {"dt": "Custom HTML Block", "filters": [["name", "=", "Sales Orders"]]},
+    {"dt": "Workspace", "filters": [["name", "=", "Marginpar Integrations"]]},
+]
 app_title = "Marginpar Integration"
 app_publisher = "Upande"
 app_description = "Pull Fabric sales data into ERPNext"

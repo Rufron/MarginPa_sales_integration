@@ -40,7 +40,7 @@ def get_connection():
     )
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_orders(from_date=None, to_date=None, limit=500):
     """Orders created within [from_date, to_date] (inclusive), newest first.
 
@@ -87,7 +87,7 @@ def get_orders(from_date=None, to_date=None, limit=500):
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_order_lines(order_id):
     """Line items for one order, with product / packing / farm names resolved."""
     if not order_id:
