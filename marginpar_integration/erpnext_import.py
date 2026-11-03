@@ -29,16 +29,19 @@ def _setup():
                         "parent_item_group": "All Item Groups"}).insert(ignore_permissions=True)
 
 
-def _ensure_customer(org_id, name, org_type):
+def _ensure_customer(org_id, name, org_type, currency=None):
     existing = frappe.db.get_value("Customer", {"dxp_organisation_id": org_id})
     if existing:
         return existing
-    return frappe.get_doc({
+    doc = frappe.get_doc({
         "doctype": "Customer",
         "customer_name": name or org_id,
         "customer_type": "Individual" if (org_type or "").lower() == "person" else "Company",
         "dxp_organisation_id": org_id,
-    }).insert(ignore_permissions=True).name
+    })
+    if currency:
+        doc.default_currency = currency  # Billing Currency
+    return doc.insert(ignore_permissions=True).name
 
 
 def _ensure_item(product_id, name):
@@ -142,4 +145,50 @@ def import_sample(limit=5):
                 frappe.db.rollback()
                 results["skipped"].append(f"{o['orderNr']}: {e}")
 
+    return results
+
+
+def _fetch_customers(limit):
+    # Billing currency isn't on Organisations (restricted); derive it from the
+    # org's orders. shortcut: MAX picks one currency if an org ever mixed EUR/USD.
+    sql = f"""
+        SELECT TOP {int(limit)}
+            c.organisationID, c.organisationName, c.organisationType,
+            MAX(o.currencyCode) AS currencyCode
+        FROM dbo.gld_Organisations_Master_DXP c
+        JOIN dbo.gld_Orders_Curated_DXP o ON o.organisationID = c.organisationID
+        WHERE o.currencyCode IS NOT NULL AND o.currencyCode <> ''
+        GROUP BY c.organisationID, c.organisationName, c.organisationType
+        ORDER BY c.organisationName
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+@frappe.whitelist()
+def import_customers(limit=1):
+    """Import DXP organisations (that have orders) as Customers with Billing Currency
+    set from their orders. Backfills billing currency on existing customers if blank."""
+    _setup()
+    results = {"created": [], "updated": [], "exists": [], "skipped": []}
+    for r in _fetch_customers(limit):
+        try:
+            existing = frappe.db.get_value("Customer", {"dxp_organisation_id": r["organisationID"]})
+            if existing:
+                if r["currencyCode"] and not frappe.db.get_value("Customer", existing, "default_currency"):
+                    frappe.db.set_value("Customer", existing, "default_currency", r["currencyCode"])
+                    frappe.db.commit()
+                    results["updated"].append(f"{existing} -> {r['currencyCode']}")
+                else:
+                    results["exists"].append(existing)
+                continue
+            name = _ensure_customer(r["organisationID"], r["organisationName"], r["organisationType"], r["currencyCode"])
+            frappe.db.commit()
+            results["created"].append(f"{r['organisationName']} -> {name} ({r['currencyCode']})")
+        except Exception as e:
+            frappe.db.rollback()
+            results["skipped"].append(f"{r.get('organisationName')}: {e}")
     return results
