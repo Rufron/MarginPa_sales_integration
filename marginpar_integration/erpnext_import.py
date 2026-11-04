@@ -13,6 +13,8 @@ from marginpar_integration.fabric import get_connection
 UOM = "Stem"
 ITEM_GROUP = "DXP Products"
 PRICE_LIST = "Standard Selling"
+COMPANY = "Marginpar"
+WAREHOUSE = "Finished Goods - M"
 
 
 def _setup():
@@ -21,6 +23,7 @@ def _setup():
         "Customer": [{"fieldname": "dxp_organisation_id", "label": "DXP Organisation ID", "fieldtype": "Data", "read_only": 1, "unique": 1}],
         "Item": [{"fieldname": "dxp_product_id", "label": "DXP Product ID", "fieldtype": "Data", "read_only": 1, "unique": 1}],
         "Sales Order": [{"fieldname": "dxp_order_nr", "label": "DXP Order Nr", "fieldtype": "Data", "read_only": 1, "unique": 1}],
+        "Sales Order Item": [{"fieldname": "dxp_farm", "label": "DXP Farm", "fieldtype": "Data", "read_only": 1}],
     })
     if not frappe.db.exists("UOM", UOM):
         frappe.get_doc({"doctype": "UOM", "uom_name": UOM}).insert(ignore_permissions=True)
@@ -88,10 +91,11 @@ def _fetch_orders(limit):
 def _fetch_lines(conn, order_id):
     # Product via Grade.productID (OrderLines.productID is permission-denied).
     sql = """
-        SELECT p.productId, p.productName, ln.stems, ln.stemSalesPrice
+        SELECT p.productId, p.productName, ln.stems, ln.stemSalesPrice, f.farmName
         FROM dbo.gld_OrderLines_Curated_DXP ln
         LEFT JOIN dbo.gld_Grade_Master_DXP   g ON g.gradeID   = ln.gradingID
         LEFT JOIN dbo.gld_Product_Master_DXP p ON p.productId = g.productID
+        LEFT JOIN dbo.gld_Farm_Master_DXP    f ON f.farmID    = ln.farmID
         WHERE ln.orderID = ? AND ln.deletedAt IS NULL
     """
     cur = conn.cursor()
@@ -141,6 +145,8 @@ def _import_one_order(conn, o, company, results):
                 "uom": uom,
                 "rate": l["stemSalesPrice"] or 0,
                 "delivery_date": delivery,
+                "warehouse": WAREHOUSE,
+                "dxp_farm": l.get("farmName") or "",
             })
         so.insert(ignore_permissions=True)
         frappe.db.commit()  # per-order: a later failure can't undo earlier orders
@@ -154,7 +160,7 @@ def _import_one_order(conn, o, company, results):
 def import_sample(limit=5):
     """Import up to `limit` most-recent non-canceled orders as Draft Sales Orders."""
     _setup()
-    company = frappe.defaults.get_global_default("company") or frappe.get_all("Company", pluck="name")[0]
+    company = COMPANY
     results = {"created": [], "exists": [], "skipped": []}
 
     target = int(limit)
@@ -192,7 +198,7 @@ def _fetch_orders_range(from_date, to_date):
 def _run_range_import(from_date, to_date, chunk=300):
     """Background worker: import all orders in date range, oldest first, in chunks."""
     _setup()
-    company = frappe.defaults.get_global_default("company") or frappe.get_all("Company", pluck="name")[0]
+    company = COMPANY
     orders = _fetch_orders_range(from_date, to_date)
     results = {"created": [], "exists": [], "skipped": []}
     for i in range(0, len(orders), chunk):
