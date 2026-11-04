@@ -54,20 +54,17 @@ def _ensure_customer(org_id, name, org_type, currency=None):
     return doc.insert(ignore_permissions=True).name
 
 
-def _ensure_item(product_id, name):
-    existing = frappe.db.get_value("Item", {"dxp_product_id": product_id})
-    if existing:
-        return existing
-    return frappe.get_doc({
-        "doctype": "Item",
-        "item_code": (name or product_id)[:140],
-        "item_name": name or product_id,
-        "item_group": ITEM_GROUP,
-        "stock_uom": UOM,
-        "is_stock_item": 0,  # external orders; avoid stock/warehouse requirements
-        "custom_is_service_item": 1,  # this site requires an item type (stock/asset/service)
-        "dxp_product_id": product_id,
-    }).insert(ignore_permissions=True).name
+def _resolve_item(name):
+    """Resolve a DXP product name to an EXISTING catalog Item. Never creates.
+    Returns (item_code, stock_uom) or (None, None). When item_name is ambiguous,
+    prefer a real catalog code (code != name) over a stray code==name duplicate."""
+    if not name:
+        return None, None
+    rows = frappe.get_all("Item", filters={"item_name": name}, fields=["name", "stock_uom"])
+    if not rows:
+        return None, None
+    rows.sort(key=lambda r: r["name"] == name)  # push code==name duplicates last
+    return rows[0]["name"], rows[0]["stock_uom"]
 
 
 def _fetch_orders(limit):
@@ -117,6 +114,14 @@ def _import_one_order(conn, o, company, results):
             results["skipped"].append(f"{o['orderNr']}: no usable lines")
             return
 
+        resolved = []
+        for l in lines:
+            code, uom = _resolve_item(l["productName"])
+            if not code:
+                results["skipped"].append(f"{o['orderNr']}: product not in catalog: {l['productName']}")
+                return
+            resolved.append((l, code, uom))
+
         customer = _ensure_customer(o["organisationID"], o["organisationName"], o["organisationType"])
         delivery = getdate(o["deliveryAt"]) if o["deliveryAt"] else getdate(o["createdAt"])
 
@@ -129,11 +134,11 @@ def _import_one_order(conn, o, company, results):
         so.selling_price_list = PRICE_LIST
         so.dxp_order_nr = o["orderNr"]
         so.ignore_pricing_rule = 1
-        for l in lines:
+        for l, code, uom in resolved:
             so.append("items", {
-                "item_code": _ensure_item(l["productId"], l["productName"]),
+                "item_code": code,
                 "qty": l["stems"],
-                "uom": UOM,
+                "uom": uom,
                 "rate": l["stemSalesPrice"] or 0,
                 "delivery_date": delivery,
             })
