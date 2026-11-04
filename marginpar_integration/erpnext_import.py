@@ -5,7 +5,7 @@ import is idempotent. Canceled orders and deleted lines are skipped. Product is
 reached via Grade.productID because the SP is denied SELECT on OrderLines.productID.
 """
 import frappe
-from frappe.utils import getdate
+from frappe.utils import getdate, add_days
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from marginpar_integration.fabric import get_connection
@@ -222,6 +222,18 @@ def import_orders_range(from_date, to_date):
         from_date=from_date, to_date=to_date,
     )
     return {"queued": from_date + ".." + to_date}
+
+
+def poll_recent_orders(days=3):
+    """Scheduled (hourly): import orders created in the last `days` days as Draft SOs.
+    Idempotent (existing orders are skipped), so a rolling window self-heals missed
+    runs. Enqueued on the long queue to survive a large catch-up after downtime."""
+    today = getdate()
+    frappe.enqueue(
+        "marginpar_integration.erpnext_import._run_range_import",
+        queue="long", timeout=36000,
+        from_date=str(add_days(today, -days)), to_date=str(today),
+    )
 
 
 def _fetch_customers(limit):

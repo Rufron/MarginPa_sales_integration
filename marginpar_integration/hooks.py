@@ -4,6 +4,9 @@ fixtures = [
     {"dt": "Custom HTML Block", "filters": [["name", "=", "Sales Orders"]]},
     {"dt": "Workspace", "filters": [["name", "=", "Marginpar Integrations"]]},
 ]
+scheduler_events = {
+    "hourly": ["marginpar_integration.erpnext_import.poll_recent_orders"],
+}
 app_title = "Marginpar Integration"
 app_publisher = "Upande"
 app_description = "Pull Fabric sales data into ERPNext"
